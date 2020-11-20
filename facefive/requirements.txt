@@ -3,3 +3,5 @@ flask_mysqldb
 flask_wtf
 werkzeug
 bcrypt
+requests
+cryptography

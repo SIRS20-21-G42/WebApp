@@ -4,10 +4,26 @@ import bcrypt
 from __init__ import app, mysql
 from views import error
 
+from cryptography                              import x509
+from cryptography.exceptions                   import InvalidSignature
+from cryptography.hazmat.primitives            import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+
+import base64
+import json
 import logging
+import requests
 logging.basicConfig(level=logging.DEBUG)
 
-# fetchall, fetchmany(), fetchone()
+AUTH_SERVER = app.config["AUTH_SERVER"]
+AUTH_CERT: x509.Certificate
+CA_CERT:   x509.Certificate
+
+with open(app.config["CA_CERT_PATH"], "rb") as f:
+    CA_CERT = x509.load_pem_x509_certificate(f.read())
+
+with open(app.config["AUTH_CERT_PATH"], "rb") as f:
+    AUTH_CERT = x509.load_pem_x509_certificate(f.read())
 
 # INIT DB
 def init_db():
@@ -131,6 +147,34 @@ def get_user(username):
         logging.debug("get_user: Something wrong happened with (username):(%s)" % (username))
         return None
 
+##### Returns a boolean stating if code was OK or not
+### in: username, code
+### out: boolean (status)
+def authenticate_user(username, code):
+    response = requests.get(AUTH_SERVER + "/authenticate/" + username + "/" + code)
+    if response.status_code == 200:
+        response = json.loads(response.text)
+        sign = base64.b64decode(response["signature"])
+        body = response["body"]
+
+        digest = hashes.Hash(hashes.SHA256)
+        digest.update(body["username"] + body["ts"] + body["status"])
+
+        hashed = digest.finalize()
+
+        try:
+            AUTH_CERT.public_key() \
+                     .verify(sign,
+                             hashed,
+                             padding.OAEP(padding.MGF1(hashes.SHA256),
+                                          hashes.SHA256,
+                                          label=None))
+
+            if body["status"] == "OK":
+                return True
+        except InvalidSignature:
+            return False
+    return False
 
 ##### Returns a user for a given pair username:password
 ### in: username, password
