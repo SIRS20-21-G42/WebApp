@@ -13,6 +13,8 @@ import base64
 import json
 import logging
 import requests
+
+requests.packages.urllib3.disable_warnings()
 logging.basicConfig(level=logging.DEBUG)
 
 AUTH_SERVER = app.config["AUTH_SERVER"]
@@ -157,20 +159,16 @@ def authenticate_user(username, code):
         sign = base64.b64decode(response["signature"])
         body = response["body"]
 
-        digest = hashes.Hash(hashes.SHA256)
-        digest.update(body["username"] + body["ts"] + body["status"])
-
-        hashed = digest.finalize()
+        msg = (body["username"] + str(body["ts"]) + body["status"]).encode()
 
         try:
             AUTH_CERT.public_key() \
                      .verify(sign,
-                             hashed,
-                             padding.OAEP(padding.MGF1(hashes.SHA256),
-                                          hashes.SHA256,
-                                          label=None))
+                             msg,
+                             padding.PKCS1v15(),
+                             hashes.SHA256())
 
-            if body["status"] == "OK":
+            if body["status"] == "OK" and body["username"] == username:
                 return True
         except InvalidSignature:
             return False
