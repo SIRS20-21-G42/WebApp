@@ -21,7 +21,7 @@ app.config['default_photo']      = 'default-user.jpg'
 app.config['MAX_CONTENT_LENGTH'] = 102400
 app.config['IMAGE_EXTENSIONS']   = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')
 
-app.config['AUTH_SERVER']    = "http://localhost:8080"
+app.config['AUTH_SERVER']    = "https://172.19.0.3:5000"
 app.config['AUTH_CERT_PATH'] = "auth/AUTH.cert"
 app.config['CA_CERT_PATH']   = "auth/CA.cert"
 app.config['MY_CERT_PATH']   = "auth/FaceFive.cert"
