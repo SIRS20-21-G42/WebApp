@@ -2,3 +2,4 @@ Flask
 flask_mysqldb
 flask_wtf
 werkzeug
+bcrypt

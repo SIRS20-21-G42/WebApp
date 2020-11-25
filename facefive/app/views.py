@@ -1,6 +1,6 @@
 from flask import render_template, request, session, redirect, url_for, flash, make_response, escape
 from flask_mysqldb import MySQL
-import random, string
+import random, string, bcrypt
 from werkzeug.utils import secure_filename
 
 from __init__ import app, mysql, csrf
@@ -195,7 +195,7 @@ def update_profile():
    if not new_password:
       new_password = current_password
 
-   if current_password != user.password:
+   if not bcrypt.checkpw(current_password.encode(), user.password.encode()):
       flash("Current password does not match registered password.", 'error')
       return render_template('profile.html', current_user=user)
 
