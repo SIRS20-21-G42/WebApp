@@ -1,12 +1,31 @@
 from flask_mysqldb import MySQL
+import bcrypt
 
 from __init__ import app, mysql
 from views import error
 
+from cryptography                              import x509
+from cryptography.exceptions                   import InvalidSignature
+from cryptography.hazmat.primitives            import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+
+import base64
+import json
 import logging
+import requests
+
+requests.packages.urllib3.disable_warnings()
 logging.basicConfig(level=logging.DEBUG)
 
-# fetchall, fetchmany(), fetchone()
+AUTH_SERVER = app.config["AUTH_SERVER"]
+AUTH_CERT: x509.Certificate
+CA_CERT:   x509.Certificate
+
+with open(app.config["CA_CERT_PATH"], "rb") as f:
+    CA_CERT = x509.load_pem_x509_certificate(f.read())
+
+with open(app.config["AUTH_CERT_PATH"], "rb") as f:
+    AUTH_CERT = x509.load_pem_x509_certificate(f.read())
 
 # INIT DB
 def init_db():
@@ -17,15 +36,15 @@ def init_db():
     cur.execute("DROP TABLE IF EXISTS Users;")
     cur.execute('''CREATE TABLE Users (
                     username VARCHAR(20) NOT NULL,
-                    password VARCHAR(20) NOT NULL,
+                    password VARCHAR(60) NOT NULL,
                     name VARCHAR(255),
                     about VARCHAR(2047),
                     photo VARCHAR(255) DEFAULT '{}',
                     PRIMARY KEY (username)
                     );'''.format(app.config['default_photo']))
-    cur.execute("INSERT INTO Users(username, password, name, about) VALUES (%s, %s, %s, %s)", ('administrator', 'AVeryL33tPasswd', "Admin", "I have no friends."))
-    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('investor', 'benfica123', "Mr. Smith"))
-    cur.execute("INSERT INTO Users(username, password, name, about) VALUES (%s, %s, %s, %s)", ('ssofadmin', 'SCP', "SSofAdmin", "A 12-year experienced sys-admin that has developed and secured this application."))
+    cur.execute("INSERT INTO Users(username, password, name, about) VALUES (%s, %s, %s, %s)", ('administrator', '$2b$12$he1RT30LM44MHosa/8hzKO33C7BdXD93t5tpljEgu//iVhiLkmA9W', "Admin", "I have no friends."))
+    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('investor', '$2b$12$Dya4pi6pWLxuZA.MDf5rsOYesCtJizuYLtXxm7gbfsq6PC9uaPLry', "Mr. Smith"))
+    cur.execute("INSERT INTO Users(username, password, name, about) VALUES (%s, %s, %s, %s)", ('ssofadmin', '$2b$12$mxbGozDUJ.9je6Vwj/rqqeVh9F2nYvsp5LSM3H6eCE9xZWqzfOdeW', "SSofAdmin", "A 12-year experienced sys-admin that has developed and secured this application."))
     cur.execute("DROP TABLE IF EXISTS Posts;")
     cur.execute('''CREATE TABLE Posts (
                     id int(11) NOT NULL AUTO_INCREMENT,
@@ -64,10 +83,10 @@ def init_db():
                     FOREIGN KEY (username1) REFERENCES Users(username),
                     FOREIGN KEY (username2) REFERENCES Users(username)
                     );''')
-    cur.execute("INSERT INTO Users(username, password, name, about) VALUES (%s, %s, %s, %s)", ('randomjoe1', '1', "Random Joe Smith1", "I am the real Random Joe"))
-    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('randomjoe2', '2', "Random Joe Smith2"))
-    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('randomjoe3', '3', "Random Joe Smith3"))
-    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('randomjoe4', '4', "Random Joe Smith4"))
+    cur.execute("INSERT INTO Users(username, password, name, about) VALUES (%s, %s, %s, %s)", ('randomjoe1', '$2b$12$dN846aDcJxKZluqI.eV2ieDqB6sMBio7spjpB8Umx/Iu15EMSCcOm', "Random Joe Smith1", "I am the real Random Joe"))
+    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('randomjoe2', '$2b$12$v9zNGO7sQhmRfzLOdekVJuJenZEmxu8ks2UvMRXpRYPBF7oJ3YTW2', "Random Joe Smith2"))
+    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('randomjoe3', '$2b$12$.1pzGkm746TIgyE9fyNCye2FMDIDHhnfzj6M/KXXX..S7vAf1iAm.', "Random Joe Smith3"))
+    cur.execute("INSERT INTO Users(username, password, name) VALUES (%s, %s, %s)", ('randomjoe4', '$2b$12$Ee07KbvA5F.5N/oEduPN7uneja/wAyx.ghSlhkHNKcVvacAeELCtm', "Random Joe Smith4"))
     cur.execute("INSERT INTO FriendsRequests(username1, username2) VALUES (%s, %s)", ('randomjoe1', "investor"))
     cur.execute("INSERT INTO FriendsRequests(username1, username2) VALUES (%s, %s)", ('randomjoe2', "investor"))
     cur.execute("INSERT INTO FriendsRequests(username1, username2) VALUES (%s, %s)", ('randomjoe3', "investor"))
@@ -117,7 +136,7 @@ def commit_results_prepared(q, values=()):
 ### in: username
 ### out: User
 def get_user(username):
-    q = "SELECT * FROM Users WHERE username = %s"
+    q = "SELECT * FROM Users WHERE BINARY username = %s"
     values = (username,)
 
     logging.debug("get_user query: %s" % q)
@@ -130,45 +149,87 @@ def get_user(username):
         logging.debug("get_user: Something wrong happened with (username):(%s)" % (username))
         return None
 
+##### Returns a boolean stating if code was OK or not
+### in: username, code
+### out: boolean (status)
+def authenticate_user(username, code):
+    response = requests.get(AUTH_SERVER + "/authenticate/" + username + "/" + code)
+    if response.status_code == 200:
+        response = json.loads(response.text)
+        sign = base64.b64decode(response["signature"])
+        body = response["body"]
+
+        msg = (body["username"] + str(body["ts"]) + body["status"]).encode()
+
+        try:
+            AUTH_CERT.public_key() \
+                     .verify(sign,
+                             msg,
+                             padding.PKCS1v15(),
+                             hashes.SHA256())
+
+            if body["status"] == "OK" and body["username"] == username:
+                return True
+        except InvalidSignature:
+            return False
+    return False
 
 ##### Returns a user for a given pair username:password
 ### in: username, password
 ### out: User
 def login_user(username, password):
-    q = "SELECT * FROM Users WHERE username = %s AND password = %s"
-    values = (username, password)
+    q = "SELECT password FROM Users WHERE BINARY username = %s"
+    values = (username,)
     data = get_all_results_prepared(q, values)
 
-    if len(data) == 1:
-        user = User(*(data[0]))
-        return user
-    else:
+    if len(data) != 1:
         logging.debug("login_user: Something wrong happened with (username, password):(%s %s)" % (username, password))
         return None
 
+    hashed = data[0][0]
+    if bcrypt.checkpw(password.encode(), hashed.encode()):
+        q = "SELECT * FROM Users WHERE BINARY username = %s"
+        values = (username,)
+        data = get_all_results_prepared(q, values)
+
+        if len(data) == 1:
+            user = User(*(data[0]))
+            return user
+        else:
+            logging.debug("login_user: Something wrong happened with (username, password):(%s %s)" % (username, password))
+            return None
+    else:
+        logging.debug("login_user: Something wrong happened with (username, password):(%s %s)" % (username, password))
+        return None
 
 ##### Registers a new user with a given pair username:password
 ### in: username, password
 ### out: User
 def register_user(username, password):
     q = "INSERT INTO Users (username, password) VALUES (%s, %s)"
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode(), salt).decode()
 
     logging.debug("register_user query: %s" % q)
-    commit_results_prepared(q, (username , password))
-    return User(username, password)
+    commit_results_prepared(q, (username, hashed))
+    return User(username, hashed)
 
 
 ##### Updates a user with the given characteristics
 ### in: username, new_name, new_password, new_about, new_photo
 ### out: User
 def update_user(username, new_name, new_password, new_about, new_photo):
-    q = "UPDATE Users SET username=%s, password=%s, name=%s, about=%s, photo=%s WHERE username = %s"
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(new_password.encode(), salt).decode()
+    q = "UPDATE Users "
+    q += "SET password=%s, name=%s, about=%s, photo=%s "
+    q += "WHERE BINARY username = %s"
 
-    values = (username, new_password, new_name, new_about, new_photo, username)
+    values = (hashed, new_name, new_about, new_photo, username)
 
     logging.debug("update_user query: %s" % q)
     commit_results_prepared(q, values)
-    return User(username, new_password, new_name, new_about, new_photo)
+    return User(username, hashed, new_name, new_about, new_photo)
 
 
 ##### Creates a new post
@@ -224,11 +285,11 @@ def get_all_posts(username):
     q = "SELECT Posts.id, Users.username, Users.name, Users.photo, Posts.content, Posts.type, Posts.created_at"
     q+= " FROM Users INNER JOIN Posts"
     q+= " ON Users.username = Posts.author"
-    q+= " WHERE Posts.author = '%s'" % (username)
+    q+= " WHERE BINARY Posts.author = '%s'" % (username)
     q+= " OR (Posts.type = 'Public')"
-    q+= " OR (Posts.type = 'Friends' AND Posts.author IN"
-    q+= " (SELECT username1 from Friends WHERE username2 = '%s'" % (username)
-    q+= "  UNION SELECT username2 from Friends WHERE username1 = '%s'))" % (username)
+    q+= " OR (Posts.type = 'Friends' AND BINARY Posts.author IN"
+    q+= " (SELECT username1 from Friends WHERE BINARY username2 = '%s'" % (username)
+    q+= "  UNION SELECT username2 from Friends WHERE BINARY username1 = '%s'))" % (username)
 
     logging.debug("get_all_posts query: %s" % q)
     data = get_all_results(q)
@@ -257,7 +318,7 @@ def new_friend_request(username, new_friend):
 ### in: username (requester), username (new_friend)
 ### out: data
 def is_request_pending(requester, username):
-    q = "SELECT username1 FROM FriendsRequests  WHERE username1 = %s AND username2 = %s"
+    q = "SELECT username1 FROM FriendsRequests  WHERE BINARY username1 = %s AND BINARY username2 = %s"
     values = (requester, username)
 
     logging.debug("is_request_pending query: %s" % q)
@@ -269,7 +330,7 @@ def is_request_pending(requester, username):
 ### in: username (new_friend)
 ### out: List of Users
 def get_pending_requests(username):
-    q = "SELECT * from Users WHERE username IN (SELECT username1 FROM FriendsRequests  WHERE username2 = %s)"
+    q = "SELECT * from Users WHERE BINARY username IN (SELECT username1 FROM FriendsRequests  WHERE BINARY username2 = %s)"
     value = (username,)
 
     logging.debug("get_pending_requests query: %s" % q)
@@ -294,7 +355,7 @@ def accept_friend_request(username, accept_friend):
     logging.debug("accept_friend_request query1: %s" % q)
     cursor.execute(q, values)
 
-    q = "DELETE FROM FriendsRequests WHERE username1=%s AND username2=%s;"
+    q = "DELETE FROM FriendsRequests WHERE BINARY username1=%s AND BINARY username2=%s;"
 
     logging.debug("accept_friend_request query2: %s" % q)
     cursor.execute(q, values)
@@ -309,12 +370,12 @@ def accept_friend_request(username, accept_friend):
 ### out: List of Users
 def get_friends(username, search_query):
     q = "SELECT * FROM Users"
-    q+= " WHERE username LIKE %s"
+    q+= " WHERE BINARY username LIKE %s"
     q+= " AND username IN"
     q+= " (SELECT username1 FROM Friends"
-    q+= "  WHERE username2 = %s"
+    q+= "  WHERE BINARY username2 = %s"
     q+= "  UNION SELECT username2 FROM Friends"
-    q+= "  WHERE username1 = %s)"
+    q+= "  WHERE BINARY username1 = %s)"
 
     logging.debug("get_friends query: %s" % q)
     values = ("%%" + search_query + "%%", username, username)
@@ -333,10 +394,10 @@ def get_friends(username, search_query):
 ### out: List of usernames
 def get_friends_aux(username):
     q = "SELECT username2 FROM Friends"
-    q+= " WHERE username1 = '%s'" % (username)
+    q+= " WHERE BINARY username1 = '%s'" % (username)
     q+= " UNION"
     q+= " SELECT username1 FROM Friends"
-    q+= " WHERE username2 = '%s'" % (username)
+    q+= " WHERE BINARY username2 = '%s'" % (username)
 
     logging.debug("get_friends_aux query: %s" % q)
     data = get_all_results(q)
