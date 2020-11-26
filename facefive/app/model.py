@@ -4,10 +4,12 @@ import bcrypt
 from __init__ import app, mysql
 from views import error
 
+from os import path, urandom
+
 from cryptography                              import x509
 from cryptography.exceptions                   import InvalidSignature
-from cryptography.hazmat.primitives            import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives            import serialization, asymmetric, hashes, padding
+from cryptography.hazmat.primitives.ciphers    import Cipher, algorithms, modes
 
 import base64
 import json
@@ -20,12 +22,31 @@ logging.basicConfig(level=logging.DEBUG)
 AUTH_SERVER = app.config["AUTH_SERVER"]
 AUTH_CERT: x509.Certificate
 CA_CERT:   x509.Certificate
+WEB_CERT:   x509.Certificate
+SECRET_KEY: bytes
+PRIVATE_KEY: bytes
+
+with open(app.config["MY_PRIV_PATH"], "rb") as f:
+    PRIVATE_KEY = serialization.load_pem_private_key(f.read(), password=None)
 
 with open(app.config["CA_CERT_PATH"], "rb") as f:
     CA_CERT = x509.load_pem_x509_certificate(f.read())
 
 with open(app.config["AUTH_CERT_PATH"], "rb") as f:
     AUTH_CERT = x509.load_pem_x509_certificate(f.read())
+
+with open(app.config["MY_CERT_PATH"], "rb") as f:
+    WEB_CERT = x509.load_pem_x509_certificate(f.read())
+
+if not path.exists(app.config["MY_SECRET_KEY"]):
+    SECRET_KEY = urandom(32)
+    keyEncoded = WEB_CERT.public_key().encrypt(SECRET_KEY, asymmetric.padding.PKCS1v15())
+    with open(app.config["MY_SECRET_KEY"], "wb") as f:
+        f.write(keyEncoded)
+else:
+    with open(app.config["MY_SECRET_KEY"], "rb") as f:
+        SECRET_KEY = PRIVATE_KEY.decrypt(f.read(), asymmetric.padding.PKCS1v15())
+
 
 # INIT DB
 def init_db():
@@ -91,6 +112,17 @@ def init_db():
     cur.execute("INSERT INTO FriendsRequests(username1, username2) VALUES (%s, %s)", ('randomjoe2', "investor"))
     cur.execute("INSERT INTO FriendsRequests(username1, username2) VALUES (%s, %s)", ('randomjoe3', "investor"))
     cur.execute("INSERT INTO FriendsRequests(username1, username2) VALUES (%s, %s)", ('randomjoe4', "investor"))
+    cur.execute("DROP TABLE IF EXISTS Authorizations;")
+    cur.execute('''CREATE TABLE Authorizations (
+                    id int(11) NOT NULL AUTO_INCREMENT,
+                    username VARCHAR(20) NOT NULL,
+                    json VARCHAR(2750),
+                    hash VARCHAR(88),
+                    iv VARCHAR(24),
+                    PRIMARY KEY (id),
+                    FOREIGN KEY (username) REFERENCES Users(username)
+                    );''')
+
 
     mysql.connection.commit()
     cur.close()
@@ -165,7 +197,7 @@ def authenticate_user(username, code):
             AUTH_CERT.public_key() \
                      .verify(sign,
                              msg,
-                             padding.PKCS1v15(),
+                             asymmetric.padding.PKCS1v15(),
                              hashes.SHA256())
 
             if body["status"] == "OK" and body["username"] == username:
@@ -409,6 +441,60 @@ def get_friends_aux(username):
     logging.debug("get_friends_aux query: %s" % q)
     return friends
 
+def create_authorization(username, update, hash, iv):
+    q = "INSERT INTO Authorizations (username, json, hash, iv) VALUES (%s, %s, %s, %s)"
+
+    logging.debug("insert_authorization query: %s" % q)
+    commit_results_prepared(q, (username, json.dumps(update), hash, base64.b64encode(iv).decode() if iv else None))
+    if not send_authorization(username, hash, update["ts"]):
+        q = "DELETE FROM Authorizations WHERE username=%s AND hash=%s"
+        commit_results_prepared(q,(username, hash))
+        raise Exception("error contacting auth")
+
+def send_authorization(username, hash, ts):
+    to_sign = username + hash + ts
+    signature = sign_to_b64(to_sign.encode())
+
+    try:
+        response = requests.post(AUTH_SERVER + "/authorize/", json = {"username": username, "hash": hash, "ts": ts, "signature": signature}, timeout=5)
+        if response.status_code == 200:
+            return True
+        else:
+            return False
+    except Exception as e:
+        return False
+
+def cipher_aes_to_b64(plain, iv):
+    cipher = Cipher(algorithms.AES(SECRET_KEY), modes.CBC(iv))
+    encryptor = cipher.encryptor()
+
+    # add padding
+    padder = padding.PKCS7(algorithms.AES.block_size).padder()
+    padded = padder.update(plain) + padder.finalize()
+    ciphertxt = encryptor.update(padded) + encryptor.finalize()
+    return base64.b64encode(ciphertxt).decode()
+
+def decipher_aes_from_b64(b64_text, iv):
+    ciphered_text = base64.b64decode(b64_text.encode())
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    decryptor = cipher.decryptor()
+    decrypted = decryptor.update(ciphered_text) + decryptor.finalize()
+
+    # remove padding
+    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+    deciphered_text = unpadder.update(decrypted) + unpadder.finalize()
+    return deciphered_text.decode()
+
+def digest_text_to_b64(plain):
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(plain.encode())
+    return base64.b64encode(digest.finalize()).decode()
+
+def sign_to_b64(plain):
+    signature = PRIVATE_KEY.sign(plain,
+                                 asymmetric.padding.PKCS1v15(),
+                                 hashes.SHA256())
+    return base64.b64encode(signature).decode()
 
 ##### class User
 class User():
@@ -450,3 +536,18 @@ class Post_to_show():
 
     def __repr__(self):
         return '<Post_to_show: id=%d, author=%s, name=%s, photo=%s, content=%s, type=%s, created_at=%s>' % (self.id, self.author, self.name, self.photo, self.content, self.type, self.created_at)
+
+
+##### class Authorization (includes Users changes authorizations)
+class Authorization():
+    def __init__(self, id, username, json, hash):
+        self.id = id
+        self.username = username
+        self.json = json.loads(x)
+        if self.json['password']:
+            self.json['password'] = decipher_aes_from_b64(self.json['password'], base64.b64decode(json['iv']))
+        self.hash = hash
+        self.ts = self.json['ts']
+
+    def __repr__(self):
+        return '<Auhotization: id=%d, username=%s, json=%s, hash=%s, ts=%s>' % (self.id, self.username, self.json, self.hash, self.ts)

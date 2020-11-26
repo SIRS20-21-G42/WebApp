@@ -3,6 +3,10 @@ from flask_mysqldb import MySQL
 import random, string, bcrypt
 from werkzeug.utils import secure_filename
 
+from time import time
+from os import urandom
+import json
+
 from __init__ import app, mysql, csrf
 import model
 
@@ -121,8 +125,9 @@ def register():
         return redirect(url_for('register'))
 
     try:
+        user = model.register_user(username, password)
         if model.authenticate_user(username, code):
-             user = model.register_user(username, password)
+           user = model.register_user(username, password)
         else:
              logging.debug("register: failed code authentication")
              return redirect(url_for('register'))
@@ -178,13 +183,19 @@ def update_profile():
         flash("Profile updating has been disabled for user admin.", 'error')
         return render_template('profile.html', current_user=user)
 
+    update = { "username": user.username, "ts":  str(int(time()))}
+
     new_name = request.form['name']
     if not new_name:
         new_name = user.name
+    else:
+        update["name"] = new_name
 
     new_about = request.form['about']
-    if new_name == 'None':
-        new_about = None
+    if new_about != user.about and \
+        not (new_about == 'None' and not user.about): # specific case when there is no about and it is not added one
+        update["about"] = new_about
+
 
     new_photo = request.files['photo']
     if not new_photo:
@@ -199,18 +210,45 @@ def update_profile():
         logging.debug("update_profile: filename (%s)" % new_photo_filename)
         logging.debug("update_profile: file (%s)" % new_photo)
 
+        update["photo"] = new_photo_filename
+
     current_password = request.form['currentpassword']
 
     new_password = request.form['newpassword']
-    if not new_password:
-        new_password = current_password
+    update_hash: str
+    iv = urandom(16)
+    try:
+        if not new_password:
+            new_password = current_password
+            update_hash = model.digest_text_to_b64(json.dumps(update))
+            iv = None
+        else:
+            update['password'] = new_password
 
-   if not bcrypt.checkpw(current_password.encode(), user.password.encode()):
-      flash("Current password does not match registered password.", 'error')
-      return render_template('profile.html', current_user=user)
+            # hash needs to be calculated before password encryption
+            update_hash = model.digest_text_to_b64(json.dumps(update))
+
+            b_64_pass = model.cipher_aes_to_b64(new_password.encode(), iv)
+            update['password'] = b_64_pass
+    except Exception as e:
+        logging.debug("update_profile: Found exception(%s)" % e)
+        return error("Error: Could not update the profile")
+
+    if not bcrypt.checkpw(current_password.encode(), user.password.encode()):
+        flash("Current password does not match registered password.", 'error')
+        return render_template('profile.html', current_user=user)
+
+    # check if there was indeed an update to the user
+    if len(update.keys()) == 2:
+        flash("Please perform an update to your profile.", 'error')
+        return render_template('profile.html', current_user=user)
 
     try:
-        user = model.update_user(username, new_name, new_password, new_about, new_photo_filename)
+        model.create_authorization(username, update, update_hash, iv)
+
+        #TODO-sendauthorization to auth
+
+        #TODO-REMOVEMEuser = model.update_user(username, new_name, new_password, new_about, new_photo_filename)
     except Exception as e:
         logging.debug("update_profile: Found exception(%s)" % e)
         return error("Error: Could not update the profile")
@@ -218,7 +256,7 @@ def update_profile():
     logging.debug("update_profile: Succesful (%s)" % (username))
 
     if user:
-        flash("Succesfully updated user %s profile" % username,)
+        flash("Waiting for authorization to update user %s profile" % username,)
         return render_template('profile.html', current_user=user)
 
 
