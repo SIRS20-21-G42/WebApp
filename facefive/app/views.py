@@ -1,4 +1,4 @@
-from flask import render_template, request, session, redirect, url_for, flash, make_response, escape
+from flask import render_template, request, session, redirect, url_for, flash, make_response, escape, Response
 from flask_mysqldb import MySQL
 import random, string, bcrypt
 from werkzeug.utils import secure_filename
@@ -126,7 +126,6 @@ def register():
         return redirect(url_for('register'))
 
     try:
-        user = model.register_user(username, password)
         if model.authenticate_user(username, code):
            user = model.register_user(username, password)
         else:
@@ -481,7 +480,7 @@ def authorizations():
         authorizations = model.get_authorizations(username)
     except Exception as e:
         logging.debug("authorizations: Found exception(%s)" % e)
-        return error("Error: Could not load friends")
+        return error("Error: Could not load authorizations")
     return render_template('authorizations.html', current_user=user, authorizations=authorizations)
 
 
@@ -512,14 +511,14 @@ def authorize():
 
     authorization = model.get_authorization(username, update_hash)
     if not authorization:
-        globalized.debug(f"received authorization for unkown authorization request: {username}, {update_hash}")
+        logging.debug(f"received authorization for unkown authorization request: {username}, {update_hash}")
         raise BadRequest("Unknown authorization request")
 
     # verify response
     if resp == "OK":
-        success = model.authorize(authorization, resp)
+        success = model.authorize(authorization)
     elif resp == "NO":
-        success = model.delete_authorization(authorization, resp)
+        success = model.delete_authorization(authorization)
     else:
         raise BadRequest("Invalid response for authorization")
     if success:

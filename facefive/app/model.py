@@ -251,17 +251,15 @@ def register_user(username, password):
 ### in: username, new_name, new_password, new_about, new_photo
 ### out: User
 def update_user(username, new_name, new_password, new_about, new_photo):
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(new_password.encode(), salt).decode()
     q = "UPDATE Users "
     q += "SET password=%s, name=%s, about=%s, photo=%s "
     q += "WHERE BINARY username = %s"
 
-    values = (hashed, new_name, new_about, new_photo, username)
+    values = (new_password, new_name, new_about, new_photo, username)
 
     logging.debug("update_user query: %s" % q)
     commit_results_prepared(q, values)
-    return User(username, hashed, new_name, new_about, new_photo)
+    return User(username, new_password, new_name, new_about, new_photo)
 
 
 ##### Creates a new post
@@ -452,10 +450,10 @@ def create_authorization(username, update, hash, iv):
         raise Exception("error contacting auth")
 
 def get_authorizations(username):
-    q = "SELECT * FROM Authorizations WHERE username=%s"
+    q = "SELECT * FROM Authorizations WHERE username=%s ORDER BY id DESC"
 
     logging.debug("get_authorizations query: %s" % q)
-    data = get_all_results(q)
+    data = get_all_results_prepared(q, (username, ))
     authorizations = []
 
     for x in data:
@@ -491,26 +489,27 @@ def send_authorization(username, hash, ts):
 
 def authorize(authorization):
     user = get_user(authorization.username)
-    update_json = authorization.json
+    update_json = authorization.update
     if not user or not update_json:
         return False
 
-    user.name = update_json["name"] if update_json["name"] else user.name
-    if update_json["password"]:
+    user.name = update_json["name"] if "name" in update_json else user.name
+    if "password" in update_json:
         salt = bcrypt.gensalt()
-        user.password = bcrypt.hashpw(password.encode(), salt).decode()
-    user.about = update_json["about"] if update_json["about"] else user.about
-    user.photo = update_json["photo"] if update_json["photo"] else user.photo
+        user.password = bcrypt.hashpw(update_json["password"].encode(), salt).decode()
+    user.about = update_json["about"] if "about" in update_json else user.about
+    user.photo = update_json["photo"] if "photo" in update_json else user.photo
 
     user = update_user(user.username, user.name, user.password, user.about, user.photo)
     if user:
-        delete_authorization(username, hash)
+        delete_authorization(authorization)
         return True
     return False
 
-def delete_authorization(username, hash):
+def delete_authorization(authorization):
     q = "DELETE FROM Authorizations WHERE username=%s AND hash=%s"
-    commit_results_prepared(q,(username, hash))
+    logging.debug("delete_authorization query: %s" % q)
+    commit_results_prepared(q,(authorization.username, authorization.hash))
     return True
 
 def cipher_aes_to_b64(plain, iv):
@@ -525,7 +524,7 @@ def cipher_aes_to_b64(plain, iv):
 
 def decipher_aes_from_b64(b64_text, iv):
     ciphered_text = base64.b64decode(b64_text.encode())
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    cipher = Cipher(algorithms.AES(SECRET_KEY), modes.CBC(iv))
     decryptor = cipher.decryptor()
     decrypted = decryptor.update(ciphered_text) + decryptor.finalize()
 
@@ -592,14 +591,14 @@ class Post_to_show():
 
 ##### class Authorization (includes Users changes authorizations)
 class Authorization():
-    def __init__(self, id, username, json, hash, iv):
+    def __init__(self, id, username, update, hash, iv):
         self.id = id
         self.username = username
-        self.json = json.loads(x)
-        if self.json['password']:
-            self.json['password'] = decipher_aes_from_b64(self.json['password'], base64.b64decode(iv))
+        self.update = json.loads(update)
+        if "password" in self.update:
+            self.update['password'] = decipher_aes_from_b64(self.update['password'], base64.b64decode(iv))
         self.hash = hash
-        self.ts = self.json['ts']
+        self.ts = self.update['ts']
 
     def __repr__(self):
         return '<Auhotization: id=%d, username=%s, json=%s, hash=%s, ts=%s>' % (self.id, self.username, self.json, self.hash, self.ts)
