@@ -451,18 +451,67 @@ def create_authorization(username, update, hash, iv):
         commit_results_prepared(q,(username, hash))
         raise Exception("error contacting auth")
 
+def get_authorizations(username):
+    q = "SELECT * FROM Authorizations WHERE username=%s"
+
+    logging.debug("get_authorizations query: %s" % q)
+    data = get_all_results(q)
+    authorizations = []
+
+    for x in data:
+        authorizations.append(Authorization(*x))
+
+    logging.debug("get_authorizations query: %s" % q)
+    return authorizations
+
+def get_authorization(username, hash):
+    q = "SELECT * FROM Authorizations WHERE username=%s AND hash=%s"
+
+    logging.debug("get_authorization query: %s" % q)
+    data = get_all_results_prepared(q, (username, hash))
+    if len(data) == 1:
+        authorization = Authorization(*(data[0]))
+        return authorization
+    else:
+        logging.debug("get_authorization: Something wrong happened with (username, hash):(%s, %s)" % (username, hash))
+        return None
+
 def send_authorization(username, hash, ts):
     to_sign = username + hash + ts
     signature = sign_to_b64(to_sign.encode())
 
     try:
         response = requests.post(AUTH_SERVER + "/authorize/", json = {"username": username, "hash": hash, "ts": ts, "signature": signature}, timeout=5)
-        if response.status_code == 200:
+        if response.status_code == 201:
             return True
         else:
             return False
     except Exception as e:
         return False
+
+def authorize(authorization):
+    user = get_user(authorization.username)
+    update_json = authorization.json
+    if not user or not update_json:
+        return False
+
+    user.name = update_json["name"] if update_json["name"] else user.name
+    if update_json["password"]:
+        salt = bcrypt.gensalt()
+        user.password = bcrypt.hashpw(password.encode(), salt).decode()
+    user.about = update_json["about"] if update_json["about"] else user.about
+    user.photo = update_json["photo"] if update_json["photo"] else user.photo
+
+    user = update_user(user.username, user.name, user.password, user.about, user.photo)
+    if user:
+        delete_authorization(username, hash)
+        return True
+    return False
+
+def delete_authorization(username, hash):
+    q = "DELETE FROM Authorizations WHERE username=%s AND hash=%s"
+    commit_results_prepared(q,(username, hash))
+    return True
 
 def cipher_aes_to_b64(plain, iv):
     cipher = Cipher(algorithms.AES(SECRET_KEY), modes.CBC(iv))
@@ -495,6 +544,9 @@ def sign_to_b64(plain):
                                  asymmetric.padding.PKCS1v15(),
                                  hashes.SHA256())
     return base64.b64encode(signature).decode()
+
+def verify_auth_signature(to_verify, signature):
+    return AUTH_CERT.public_key().verify(signature, to_verify, padding.PKCS1v15(), hashes.SHA256())
 
 ##### class User
 class User():
@@ -540,12 +592,12 @@ class Post_to_show():
 
 ##### class Authorization (includes Users changes authorizations)
 class Authorization():
-    def __init__(self, id, username, json, hash):
+    def __init__(self, id, username, json, hash, iv):
         self.id = id
         self.username = username
         self.json = json.loads(x)
         if self.json['password']:
-            self.json['password'] = decipher_aes_from_b64(self.json['password'], base64.b64decode(json['iv']))
+            self.json['password'] = decipher_aes_from_b64(self.json['password'], base64.b64decode(iv))
         self.hash = hash
         self.ts = self.json['ts']
 

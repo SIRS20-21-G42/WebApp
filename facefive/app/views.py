@@ -2,6 +2,7 @@ from flask import render_template, request, session, redirect, url_for, flash, m
 from flask_mysqldb import MySQL
 import random, string, bcrypt
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import BadRequest
 
 from time import time
 from os import urandom
@@ -245,10 +246,6 @@ def update_profile():
 
     try:
         model.create_authorization(username, update, update_hash, iv)
-
-        #TODO-sendauthorization to auth
-
-        #TODO-REMOVEMEuser = model.update_user(username, new_name, new_password, new_about, new_photo_filename)
     except Exception as e:
         logging.debug("update_profile: Found exception(%s)" % e)
         return error("Error: Could not update the profile")
@@ -464,3 +461,69 @@ def friends():
         return error("Error: Could not load friends")
 
     return render_template('friends.html', current_user=user, friends=friends)
+
+##### get a user's authorizations
+### in[GET]: username
+### sends the page with the users authorizations
+### redirects to register otherwise
+@app.route('/authorizations', methods=['GET'])
+@csrf.exempt
+def authorizations():
+    username = None
+    user = None
+    if 'username' in session:
+        username = session['username']
+        user = model.get_user(username)
+
+    logging.debug("authorizations: current_user: %s" % (user))
+
+    try:
+        authorizations = model.get_authorizations(username)
+    except Exception as e:
+        logging.debug("authorizations: Found exception(%s)" % e)
+        return error("Error: Could not load friends")
+    return render_template('authorizations.html', current_user=user, authorizations=authorizations)
+
+
+##### receive an authorization confirmation
+### in[POST]: username, hash, resp, signature
+### authorizes or rejects an update
+@app.route('/authorize', methods=['POST'])
+@csrf.exempt
+def authorize():
+    body = request.get_json()
+    if not body:
+        raise BadRequest("Missing JSON body")
+    expected = ["hash", "resp", "signature", "username"]
+    real = sorted(list(body.keys()))
+    if expected != real:
+        raise BadRequest("Wrong JSON fields")
+    username = body["username"]
+    update_hash = body["hash"]
+    resp = body["resp"]
+    signature = body["signature"]
+
+    # Verify signature
+    to_hash = (username + resp + update_hash).encode()
+    try:
+        model.verify_auth_signature(base64.b64decode(signature), to_hash)
+    except InvalidSignature:
+        raise BadRequest("Invalid signature of request")
+
+    authorization = model.get_authorization(username, update_hash)
+    if not authorization:
+        globalized.debug(f"received authorization for unkown authorization request: {username}, {update_hash}")
+        raise BadRequest("Unknown authorization request")
+
+    # verify response
+    if resp == "OK":
+        success = model.authorize(authorization, resp)
+    elif resp == "NO":
+        success = model.delete_authorization(authorization, resp)
+    else:
+        raise BadRequest("Invalid response for authorization")
+    if success:
+        return Response("", status=200)
+    else:
+        return Response("", status=500)
+
