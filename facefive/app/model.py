@@ -6,6 +6,8 @@ from views import error
 
 from os import path, urandom
 
+from datetime import datetime
+
 from cryptography                              import x509
 from cryptography.exceptions                   import InvalidSignature
 from cryptography.hazmat.primitives            import serialization, asymmetric, hashes, padding
@@ -475,11 +477,11 @@ def get_authorization(username, hash):
         return None
 
 def send_authorization(username, hash, ts):
-    to_sign = username + hash + ts
+    to_sign = username + ts + hash
     signature = sign_to_b64(to_sign.encode())
 
     try:
-        response = requests.post(AUTH_SERVER + "/authorize/", json = {"username": username, "hash": hash, "ts": ts, "signature": signature}, timeout=5)
+        response = requests.post(AUTH_SERVER + "/authorize", json = {"username": username, "hash": hash, "ts": ts, "signature": signature}, timeout=5)
         if response.status_code == 201:
             return True
         else:
@@ -598,7 +600,7 @@ class Authorization():
         if "password" in self.update:
             self.update['password'] = decipher_aes_from_b64(self.update['password'], base64.b64decode(iv))
         self.hash = hash
-        self.ts = self.update['ts']
+        self.ts = datetime.utcfromtimestamp(int(self.update['ts'])).strftime('%d-%m-%Y %H:%M:%S UTC')
 
     def __repr__(self):
         return '<Auhotization: id=%d, username=%s, json=%s, hash=%s, ts=%s>' % (self.id, self.username, self.json, self.hash, self.ts)
