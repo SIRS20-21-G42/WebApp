@@ -31,7 +31,7 @@ fi
 # Check for certificate
 if [ ! -f "FaceFive.cert" ] || [ "$gen" = "true" ]; then
     echo "Generating CSR"
-    openssl req -new -subj /O=FaceFive/subjectAltName=$MY_IP,webapp_app,webapp/CN=FaceFive/ -key FaceFive.key -out /tmp/csr 2> /dev/null
+    openssl req -new -subj /O=FaceFive/subjectAltName=$MY_IP,webapp_app,webapp/CN=WebApp/ -key FaceFive.key -out /tmp/csr 2> /dev/null
     echo "Getting cert"
     curl --fail --cacert CA.cert --capath . -F csr=@/tmp/csr https://ca:5000/sign > FaceFive.cert 2> /dev/null
     if [ $? -ne 0 ]; then
