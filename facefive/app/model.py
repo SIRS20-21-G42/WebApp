@@ -546,8 +546,8 @@ def sign_to_b64(plain):
                                  hashes.SHA256())
     return base64.b64encode(signature).decode()
 
-def verify_auth_signature(to_verify, signature):
-    return AUTH_CERT.public_key().verify(signature, to_verify, padding.PKCS1v15(), hashes.SHA256())
+def verify_auth_signature(signature, to_verify):
+    return AUTH_CERT.public_key().verify(signature, to_verify, asymmetric.padding.PKCS1v15(), hashes.SHA256())
 
 ##### class User
 class User():

@@ -3,7 +3,6 @@ from flask_mysqldb import MySQL
 from flask_wtf.csrf import CSRFProtect
 
 import os
-import ssl
 import sys
 import time
 
@@ -21,15 +20,12 @@ app.config['default_photo']      = 'default-user.jpg'
 app.config['MAX_CONTENT_LENGTH'] = 102400
 app.config['IMAGE_EXTENSIONS']   = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')
 
-app.config['AUTH_SERVER']    = "https://172.19.0.3:5000"
+app.config['AUTH_SERVER']    = "https://authserver:5000"
 app.config['AUTH_CERT_PATH'] = "auth/AUTH.cert"
 app.config['CA_CERT_PATH']   = "auth/CA.cert"
 app.config['MY_CERT_PATH']   = "auth/FaceFive.cert"
 app.config['MY_PRIV_PATH']   = "auth/FaceFive.key"
 app.config['MY_SECRET_KEY']  = "auth/FacefiveSecret.key" 
-
-context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)
-context.load_cert_chain(certfile=app.config["MY_CERT_PATH"], keyfile=app.config["MY_PRIV_PATH"])
 
 app.config.update(SESSION_COOKIE_SAMESITE="Lax")
 
@@ -44,4 +40,4 @@ from model import *
 from views import *
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, threaded=True, ssl_context=context)
+    app.run(host='0.0.0.0', debug=True, threaded=True, ssl_context=(app.config["MY_CERT_PATH"], app.config["MY_PRIV_PATH"]))

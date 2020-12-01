@@ -4,8 +4,11 @@ import random, string, bcrypt
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import BadRequest
 
+from cryptography.exceptions import InvalidSignature
+
 from time import time
 from os import urandom
+import base64
 import json
 
 from __init__ import app, mysql, csrf
@@ -525,4 +528,3 @@ def authorize():
         return Response("", status=200)
     else:
         return Response("", status=500)
-
