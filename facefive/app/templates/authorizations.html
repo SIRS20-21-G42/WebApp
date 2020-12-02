@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Authorizations |{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-4"></div>
+    <div class="col-4">
+      <h2><center>Pending Authorizations</center></h2>
+    </div>
+    <div class="col-4"></div>
+  </div>
+</div>
+
+<hr class="half-rule" color="white"/>
+
+<!-- requests -->
+{% autoescape true %}
+{% if authorizations|length == 0 %}
+  <h4><center>No pending authorization requests</center></h4>
+{% endif %}
+{% for authorization in authorizations %}
+  <!-- request -->
+  <p>
+    <div class="card card-body border border-dark rounded" style="border-width:2px !important">
+      <span><b>JSON:</b></span>
+      <br>
+      <pre><code>
+          {{authorization.update}}
+      </code></pre>
+      <br>
+      <span><b>Timestamp:</b> {{authorization.ts}} </span>
+      <span><b>Hash:</b> {{authorization.hash}} </span>
+    </div>
+  </p>
+  {% if not loop.last %}
+    <hr class="half-rule" color="grey" />
+  {% endif %}
+{% endfor %}
+{% endautoescape %}
+
+{% endblock %}

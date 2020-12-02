@@ -17,6 +17,7 @@
             <li><a class="nav-link" href="{{ url_for('pending_requests') }}">Pending Requests</a></li>
             <li><a class="nav-link" href="{{ url_for('request_friend') }}">Add a Friend</a></li>
             <li><a class="nav-link" href="{{ url_for('create_post') }}">New Post</a></li>
+             <li><a class="nav-link" href="{{ url_for('authorizations') }}">Authorizations</a></li>
             {% if current_user.name %}
                 <li><a class="nav-link" href="{{ url_for('profile') }}"> Profile ({{ current_user.name|e }})</a></li>
             {% else %}
