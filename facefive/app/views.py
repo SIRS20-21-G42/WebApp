@@ -271,8 +271,9 @@ def create_post():
         username = session['username']
         user = model.get_user(username)
 
+    safe = model.check_location(username)
     if request.method == 'GET':
-        return render_template('create_post.html', current_user=user)
+        return render_template('create_post.html', current_user=user, safe=safe)
 
     new_content = request.form['content']
     type = request.form['type']
@@ -281,9 +282,13 @@ def create_post():
 
     if not new_content:
         flash("You need to introduce some content.", 'error')
-        return render_template('create_post.html', current_user=user)
+        if type == "Secret" and not safe:
+            return error("User is not in safe location")
+        return render_template('create_post.html', current_user=user, safe=safe)
 
     try:
+        if type == "Secret" and not safe:
+            return error("User is not in safe location")
         new_post = model.new_post(username, new_content, type)
     except Exception as e:
         logging.debug("create_post: Found exception(%s)" % e)

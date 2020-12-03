@@ -16,7 +16,7 @@
                 <legend>Insert the Content for your post</legend>
                 <hr class="half-rule" color="grey" />
                 <div class="form-group">
-                  <label for="contentArea">Content.</label>
+                  <label for="contentArea">Content:</label>
                   <textarea class="form-control" name="content" id="contentArea" rows="10" placeholder=""></textarea>
                 </div>
                 <div class="form-group">
@@ -24,7 +24,9 @@
                   <select id="type" name="type">
                     <option value="Public" selected>Public</option>
                     <option value="Friends">Friends</option>
-                    <option value="Secret">Secret</option>
+                    {% if safe %}
+                      <option value="Secret">Secret</option>
+                    {% endif %}
                   </select>
                 </div>
                 <button type="submit" class="btn btn-primary">Create Post</button>
