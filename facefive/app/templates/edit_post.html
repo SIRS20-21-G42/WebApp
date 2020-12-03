@@ -25,7 +25,7 @@
                   <select id="type" name="type">
                     <option value="Public" {% if post.type == "Public" %}selected{% endif %}>Public</option>
                     <option value="Friends" {% if post.type == "Friends" %}selected{% endif %}>Friends</option>
-                    <option value="Private" {% if post.type == "Private" %}selected{% endif %}>Private</option>
+                    <option value="Secret" {% if post.type == "Secret" %}selected{% endif %}>Secret</option>
                   </select>
                 </div>
                 <button type="submit" class="btn btn-primary">Create Post</button>
