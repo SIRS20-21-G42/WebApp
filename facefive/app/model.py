@@ -130,16 +130,6 @@ def init_db():
     cur.close()
 
 
-# SELECT QUERIES
-def get_all_results(q):
-    cur = mysql.connection.cursor()
-    cur.execute(q)
-    mysql.connection.commit()
-    data = cur.fetchall()
-    cur.close()
-    return data
-
-
 # SELECT QUERIES PREPARED STATEMENTS
 def get_all_results_prepared(q, values=()):
     cur = mysql.connection.cursor()
@@ -148,14 +138,6 @@ def get_all_results_prepared(q, values=()):
     data = cur.fetchall()
     cur.close()
     return data
-
-
-# UPDATE and INSERT QUERIES
-def commit_results(q):
-    cur = mysql.connection.cursor()
-    cur.execute(q)
-    mysql.connection.commit()
-    cur.close()
 
 
 # UPDATE and INSERT QUERIES PREPARED STATEMENTS
@@ -317,14 +299,14 @@ def get_all_posts(username):
     q = "SELECT Posts.id, Users.username, Users.name, Users.photo, Posts.content, Posts.type, Posts.created_at"
     q+= " FROM Users INNER JOIN Posts"
     q+= " ON Users.username = Posts.author"
-    q+= " WHERE BINARY Posts.author = '%s'" % (username)
+    q+= " WHERE BINARY Posts.author = '%s'"
     q+= " OR (Posts.type = 'Public')"
     q+= " OR (Posts.type = 'Friends' AND BINARY Posts.author IN"
-    q+= " (SELECT username1 from Friends WHERE BINARY username2 = '%s'" % (username)
-    q+= "  UNION SELECT username2 from Friends WHERE BINARY username1 = '%s'))" % (username)
+    q+= " (SELECT username1 from Friends WHERE BINARY username2 = '%s'"
+    q+= "  UNION SELECT username2 from Friends WHERE BINARY username1 = '%s'))"
 
     logging.debug("get_all_posts query: %s" % q)
-    data = get_all_results(q)
+    data = get_all_results_prepared(q, (username, username, username))
     posts_to_show = []
 
     for x in data:
@@ -426,13 +408,13 @@ def get_friends(username, search_query):
 ### out: List of usernames
 def get_friends_aux(username):
     q = "SELECT username2 FROM Friends"
-    q+= " WHERE BINARY username1 = '%s'" % (username)
+    q+= " WHERE BINARY username1 = '%s'"
     q+= " UNION"
     q+= " SELECT username1 FROM Friends"
-    q+= " WHERE BINARY username2 = '%s'" % (username)
+    q+= " WHERE BINARY username2 = '%s'"
 
     logging.debug("get_friends_aux query: %s" % q)
-    data = get_all_results(q)
+    data = get_all_results_prepared(q, (username, username))
     friends = []
 
     for x in data:
