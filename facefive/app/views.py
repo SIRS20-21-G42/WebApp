@@ -339,7 +339,7 @@ def edit_post():
 
     if not new_content:
         flash("You need to introduce some content.", 'error')
-        if post.type == "Secret" and not safe:
+        if (post.type == "Secret" or new_type == "Secret") and not safe:
             return error("User is not in safe location")
         return render_template('edit_post.html', current_user=user, post=post, safe=safe)
 
