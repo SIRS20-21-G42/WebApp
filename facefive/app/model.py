@@ -169,28 +169,31 @@ def get_user(username):
 ### in: username
 ### out: boolean (status)
 def check_location(username):
-    resp = requests.get(AUTH_SERVER + "/location/" + username)
-    if resp.status_code == 200:
-        resp = json.loads(resp.text)
-        expected = ["signature", "status", "ts", "username"]
-        real = sorted(list(resp.keys()))
-        if expected == real:
-            if username == resp["username"]:
-                status = resp["status"]
-                ts     = resp["ts"]
-                sign   = base64.b64decode(resp["signature"])
+    try:
+        resp = requests.get(AUTH_SERVER + "/location/" + username)
+        if resp.status_code == 200:
+            resp = json.loads(resp.text)
+            expected = ["signature", "status", "ts", "username"]
+            real = sorted(list(resp.keys()))
+            if expected == real:
+                if username == resp["username"]:
+                    status = resp["status"]
+                    ts     = resp["ts"]
+                    sign   = base64.b64decode(resp["signature"])
 
-                to_verify = (username + status + str(ts)).encode()
+                    to_verify = (username + status + str(ts)).encode()
 
-                try:
-                    verify_auth_signature(sign, to_verify)
-                    return resp["status"] == "OK"
-                except InvalidSignature:
-                    logging.debug("Invalid signature")
+                    try:
+                        verify_auth_signature(sign, to_verify)
+                        return resp["status"] == "OK"
+                    except InvalidSignature:
+                        logging.debug("Invalid signature")
+                else:
+                    logging.debug("Usernames do not match")
             else:
-                logging.debug("Usernames do not match")
-        else:
-            logging.debug("Invalid message structure")
+                logging.debug("Invalid message structure")
+    except:
+        logging.debug("Could not connect to Auth")
     return False
 
 ##### Returns a boolean stating if code was OK or not
@@ -324,7 +327,7 @@ def get_all_posts(username):
     q = "SELECT Posts.id, Users.username, Users.name, Users.photo, Posts.content, Posts.type, Posts.created_at"
     q+= " FROM Users INNER JOIN Posts"
     q+= " ON Users.username = Posts.author"
-    q+= " WHERE BINARY (Posts.author = '%s'"
+    q+= " WHERE BINARY (Posts.author = %s"
 
     if safe:
         q += ")"
@@ -333,8 +336,8 @@ def get_all_posts(username):
 
     q+= " OR (Posts.type = 'Public')"
     q+= " OR (Posts.type = 'Friends' AND BINARY Posts.author IN"
-    q+= " (SELECT username1 from Friends WHERE BINARY username2 = '%s'"
-    q+= "  UNION SELECT username2 from Friends WHERE BINARY username1 = '%s'))"
+    q+= " (SELECT username1 from Friends WHERE BINARY username2 = %s"
+    q+= "  UNION SELECT username2 from Friends WHERE BINARY username1 = %s))"
 
 
 
