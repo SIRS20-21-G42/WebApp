@@ -32,6 +32,9 @@
       <br>
       <span><b>Timestamp:</b> {{authorization.ts}} </span>
       <span><b>Hash:</b> {{authorization.hash}} </span>
+      {% if authorization.qrcode %}
+        <img src="{{authorization.qrcode}}" style="height: 150px; width: 150px"/>
+      {% endif %}
     </div>
   </p>
   {% if not loop.last %}

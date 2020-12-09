@@ -1,7 +1,7 @@
 from flask_mysqldb import MySQL
 import bcrypt
 
-from __init__ import app, mysql
+from __init__ import app, mysql, qrcode
 from views import error
 
 from os import path, urandom
@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.ciphers    import Cipher, algorithms, modes
 import base64
 import json
 import logging
+import qrcode as qrc
 import requests
 
 requests.packages.urllib3.disable_warnings()
@@ -619,6 +620,11 @@ class Authorization():
             self.update['password'] = decipher_aes_from_b64(self.update['password'], base64.b64decode(iv))
         self.hash = hash
         self.ts = datetime.utcfromtimestamp(int(self.update['ts'])).strftime('%d-%m-%Y %H:%M:%S UTC')
+        try:
+            self.qrcode = qrcode(update)
+        except qrc.exceptions.DataOverflowError:
+            logging.debug("Data is too big to fit in QRCode")
+            self.qrcode = None
 
     def __repr__(self):
         return '<Auhotization: id=%d, username=%s, json=%s, hash=%s, ts=%s>' % (self.id, self.username, self.json, self.hash, self.ts)

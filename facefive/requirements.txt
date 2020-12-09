@@ -5,3 +5,4 @@ werkzeug
 bcrypt
 requests
 cryptography
+flask-qrcode
