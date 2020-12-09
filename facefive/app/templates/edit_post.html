@@ -17,7 +17,7 @@
                 <hr class="half-rule" color="grey" />
                 <input type="hidden" name="id" value= {{ post.id }} />
                 <div class="form-group">
-                  <label for="contentArea">Content.</label>
+                  <label for="contentArea">Content:</label>
                   <textarea class="form-control" name="content" id="contentArea" rows="10">{{ post.content }}</textarea>
                 </div>
                 <div class="form-group">
@@ -25,7 +25,9 @@
                   <select id="type" name="type">
                     <option value="Public" {% if post.type == "Public" %}selected{% endif %}>Public</option>
                     <option value="Friends" {% if post.type == "Friends" %}selected{% endif %}>Friends</option>
-                    <option value="Private" {% if post.type == "Private" %}selected{% endif %}>Private</option>
+                    {% if safe %}
+                      <option value="Secret" {% if post.type == "Secret" %}selected{% endif %}>Secret</option>
+                    {% endif %}
                   </select>
                 </div>
                 <button type="submit" class="btn btn-primary">Create Post</button>

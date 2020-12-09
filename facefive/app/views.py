@@ -271,8 +271,9 @@ def create_post():
         username = session['username']
         user = model.get_user(username)
 
+    safe = model.check_location(username)
     if request.method == 'GET':
-        return render_template('create_post.html', current_user=user)
+        return render_template('create_post.html', current_user=user, safe=safe)
 
     new_content = request.form['content']
     type = request.form['type']
@@ -281,9 +282,13 @@ def create_post():
 
     if not new_content:
         flash("You need to introduce some content.", 'error')
-        return render_template('create_post.html', current_user=user)
+        if type == "Secret" and not safe:
+            return error("User is not in safe location")
+        return render_template('create_post.html', current_user=user, safe=safe)
 
     try:
+        if type == "Secret" and not safe:
+            return error("User is not in safe location")
         new_post = model.new_post(username, new_content, type)
     except Exception as e:
         logging.debug("create_post: Found exception(%s)" % e)
@@ -311,6 +316,7 @@ def edit_post():
         username = session['username']
         user = model.get_user(username)
 
+    safe = model.check_location(username)
     if request.method == 'GET':
         post_id = request.args.get('id')
         try:
@@ -318,10 +324,12 @@ def edit_post():
             if not post.author == user.username:
                 logging.debug("edit_post1: Found exception(User is not the author of the post)")
                 return error("User is not the author of the post")
+            if post.type == "Secret" and not safe:
+                return error("User is not in safe location")
         except Exception as e:
             logging.debug("edit_post1: Found exception(%s)" % e)
             return error("Error: Could not load the post")
-        return render_template('edit_post.html', current_user=user, post=post)
+        return render_template('edit_post.html', current_user=user, post=post, safe=safe)
 
     new_content = request.form['content']
     new_type = request.form['type']
@@ -331,13 +339,17 @@ def edit_post():
 
     if not new_content:
         flash("You need to introduce some content.", 'error')
-        return render_template('edit_post.html', current_user=user, post=post)
+        if (post.type == "Secret" or new_type == "Secret") and not safe:
+            return error("User is not in safe location")
+        return render_template('edit_post.html', current_user=user, post=post, safe=safe)
 
     try:
         post = model.get_post(post_id)
         if not post.author == user.username:
             logging.debug("edit_post1: Found exception(User is not the author of the post)")
             return error("User is not the author of the post")
+        if post.type == "Secret" and not safe:
+            return error("User is not in safe location")
         new_post = model.edit_post(post_id, new_content, new_type)
     except Exception as e:
         logging.debug("edit_post2: Found exception(%s)" % e)

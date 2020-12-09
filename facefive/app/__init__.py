@@ -25,7 +25,7 @@ app.config['AUTH_CERT_PATH'] = "auth/AUTH.cert"
 app.config['CA_CERT_PATH']   = "auth/CA.cert"
 app.config['MY_CERT_PATH']   = "auth/FaceFive.cert"
 app.config['MY_PRIV_PATH']   = "auth/FaceFive.key"
-app.config['MY_SECRET_KEY']  = "auth/FacefiveSecret.key" 
+app.config['MY_SECRET_KEY']  = "auth/FacefiveSecret.key"
 
 app.config.update(SESSION_COOKIE_SAMESITE="Lax")
 

@@ -73,16 +73,16 @@ def init_db():
                     id int(11) NOT NULL AUTO_INCREMENT,
                     author VARCHAR(20) NOT NULL,
                     content VARCHAR(2047),
-                    type ENUM ('Public','Private','Friends') DEFAULT 'Public',
+                    type ENUM ('Public','Secret','Friends') DEFAULT 'Public',
                     created_at timestamp default now(),
                     updated_at timestamp default now() ON UPDATE now(),
                     PRIMARY KEY (id),
                     FOREIGN KEY (author) REFERENCES Users(username)
                     );''')
-    cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('administrator', 'No one will find that I have no secrets.', "Private"))
+    cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('administrator', 'No one will find that I have no secrets.', "Secret"))
     cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('investor', 'This is a great platform', "Public"))
     cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('investor', 'Lets keep it for us but I believe that after this app Instagram is done', "Friends"))
-    cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('investor', 'TikTok might also be done but do not want ot make this bold claim in Public', "Private"))
+    cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('investor', 'TikTok might also be done but do not want ot make this bold claim in Public', "Secret"))
     cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('SSofAdmin', 'There are no problems with this app. It works perfectly', "Public"))
     cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('SSofAdmin', 'Cannot put this app running. Can any of my friends help me', "Friends"))
     cur.execute("INSERT INTO Posts(author, content, type) VALUES (%s, %s, %s)", ('SSofAdmin', 'Just found a great new thing. Have a look at it. It might be of help. https://www.guru99.com/install-linux.html', "Public"))
@@ -130,16 +130,6 @@ def init_db():
     cur.close()
 
 
-# SELECT QUERIES
-def get_all_results(q):
-    cur = mysql.connection.cursor()
-    cur.execute(q)
-    mysql.connection.commit()
-    data = cur.fetchall()
-    cur.close()
-    return data
-
-
 # SELECT QUERIES PREPARED STATEMENTS
 def get_all_results_prepared(q, values=()):
     cur = mysql.connection.cursor()
@@ -148,14 +138,6 @@ def get_all_results_prepared(q, values=()):
     data = cur.fetchall()
     cur.close()
     return data
-
-
-# UPDATE and INSERT QUERIES
-def commit_results(q):
-    cur = mysql.connection.cursor()
-    cur.execute(q)
-    mysql.connection.commit()
-    cur.close()
 
 
 # UPDATE and INSERT QUERIES PREPARED STATEMENTS
@@ -183,6 +165,37 @@ def get_user(username):
         logging.debug("get_user: Something wrong happened with (username):(%s)" % (username))
         return None
 
+##### Returns a boolean stating if user is connected to safe location or not
+### in: username
+### out: boolean (status)
+def check_location(username):
+    try:
+        resp = requests.get(AUTH_SERVER + "/location/" + username)
+        if resp.status_code == 200:
+            resp = json.loads(resp.text)
+            expected = ["signature", "status", "ts", "username"]
+            real = sorted(list(resp.keys()))
+            if expected == real:
+                if username == resp["username"]:
+                    status = resp["status"]
+                    ts     = resp["ts"]
+                    sign   = base64.b64decode(resp["signature"])
+
+                    to_verify = (username + status + str(ts)).encode()
+
+                    try:
+                        verify_auth_signature(sign, to_verify)
+                        return resp["status"] == "OK"
+                    except InvalidSignature:
+                        logging.debug("Invalid signature")
+                else:
+                    logging.debug("Usernames do not match")
+            else:
+                logging.debug("Invalid message structure")
+    except:
+        logging.debug("Could not connect to Auth")
+    return False
+
 ##### Returns a boolean stating if code was OK or not
 ### in: username, code
 ### out: boolean (status)
@@ -196,11 +209,7 @@ def authenticate_user(username, code):
         msg = (body["username"] + str(body["ts"]) + body["status"]).encode()
 
         try:
-            AUTH_CERT.public_key() \
-                     .verify(sign,
-                             msg,
-                             asymmetric.padding.PKCS1v15(),
-                             hashes.SHA256())
+            verify_auth_signature(sign, msg)
 
             if body["status"] == "OK" and body["username"] == username:
                 return True
@@ -314,17 +323,26 @@ def edit_post(post_id, new_content, type):
 ### in: username
 ### out: List of Posts_to_show
 def get_all_posts(username):
+    safe = check_location(username)
     q = "SELECT Posts.id, Users.username, Users.name, Users.photo, Posts.content, Posts.type, Posts.created_at"
     q+= " FROM Users INNER JOIN Posts"
     q+= " ON Users.username = Posts.author"
-    q+= " WHERE BINARY Posts.author = '%s'" % (username)
+    q+= " WHERE BINARY (Posts.author = %s"
+
+    if safe:
+        q += ")"
+    else:
+        q += " AND Posts.type <> 'Secret')"
+
     q+= " OR (Posts.type = 'Public')"
     q+= " OR (Posts.type = 'Friends' AND BINARY Posts.author IN"
-    q+= " (SELECT username1 from Friends WHERE BINARY username2 = '%s'" % (username)
-    q+= "  UNION SELECT username2 from Friends WHERE BINARY username1 = '%s'))" % (username)
+    q+= " (SELECT username1 from Friends WHERE BINARY username2 = %s"
+    q+= "  UNION SELECT username2 from Friends WHERE BINARY username1 = %s))"
+
+
 
     logging.debug("get_all_posts query: %s" % q)
-    data = get_all_results(q)
+    data = get_all_results_prepared(q, (username, username, username))
     posts_to_show = []
 
     for x in data:
@@ -426,13 +444,13 @@ def get_friends(username, search_query):
 ### out: List of usernames
 def get_friends_aux(username):
     q = "SELECT username2 FROM Friends"
-    q+= " WHERE BINARY username1 = '%s'" % (username)
+    q+= " WHERE BINARY username1 = '%s'"
     q+= " UNION"
     q+= " SELECT username1 FROM Friends"
-    q+= " WHERE BINARY username2 = '%s'" % (username)
+    q+= " WHERE BINARY username2 = '%s'"
 
     logging.debug("get_friends_aux query: %s" % q)
-    data = get_all_results(q)
+    data = get_all_results_prepared(q, (username, username))
     friends = []
 
     for x in data:
@@ -547,7 +565,7 @@ def sign_to_b64(plain):
     return base64.b64encode(signature).decode()
 
 def verify_auth_signature(signature, to_verify):
-    return AUTH_CERT.public_key().verify(signature, to_verify, asymmetric.padding.PKCS1v15(), hashes.SHA256())
+    AUTH_CERT.public_key().verify(signature, to_verify, asymmetric.padding.PKCS1v15(), hashes.SHA256())
 
 ##### class User
 class User():
