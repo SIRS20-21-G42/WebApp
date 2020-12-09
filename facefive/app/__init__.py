@@ -1,5 +1,6 @@
 from flask import Flask
 from flask_mysqldb import MySQL
+from flask_qrcode import QRcode
 from flask_wtf.csrf import CSRFProtect
 
 import os
@@ -31,6 +32,7 @@ app.config.update(SESSION_COOKIE_SAMESITE="Lax")
 
 mysql = MySQL(app)
 csrf = CSRFProtect(app)
+qrcode = QRcode(app)
 
 @app.context_processor
 def inject():
