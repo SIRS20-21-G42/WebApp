@@ -14,6 +14,7 @@ if [ ! -f "CA.cert" ]; then
     curl --fail -k https://ca:5000/CACert > CA.cert 2> /dev/null
     if [ $? -ne 0 ]; then
         echo "Couldn't get CA certificate"
+		rm CA.cert
         exit 1
     fi
     echo "Trusting CA certificate"
@@ -36,6 +37,7 @@ if [ ! -f "FaceFive.cert" ] || [ "$gen" = "true" ]; then
     curl --fail --cacert CA.cert --capath . -F csr=@/tmp/csr https://ca:5000/sign > FaceFive.cert 2> /dev/null
     if [ $? -ne 0 ]; then
         echo "Couldn't generate certificate"
+		rm FaceFive.cert
         exit 1
     fi
 fi
