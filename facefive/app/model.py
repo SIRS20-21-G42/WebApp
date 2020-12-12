@@ -464,7 +464,7 @@ def create_authorization(username, update, hash, iv):
     q = "INSERT INTO Authorizations (username, json, hash, iv) VALUES (%s, %s, %s, %s)"
 
     logging.debug("insert_authorization query: %s" % q)
-    commit_results_prepared(q, (username, json.dumps(update), hash, base64.b64encode(iv).decode() if iv else None))
+    commit_results_prepared(q, (username, json.dumps(update, separators=(',', ':')), hash, base64.b64encode(iv).decode() if iv else None))
     if not send_authorization(username, hash, update["ts"]):
         q = "DELETE FROM Authorizations WHERE username=%s AND hash=%s"
         commit_results_prepared(q,(username, hash))
@@ -621,7 +621,7 @@ class Authorization():
         self.hash = hash
         self.ts = datetime.utcfromtimestamp(int(self.update['ts'])).strftime('%d-%m-%Y %H:%M:%S UTC')
         try:
-            self.qrcode = qrcode(update)
+            self.qrcode = qrcode(json.dumps(self.update, separators=(',', ':')))
         except qrc.exceptions.DataOverflowError:
             logging.debug("Data is too big to fit in QRCode")
             self.qrcode = None

@@ -12,7 +12,7 @@ from jinja2 import Environment
 app = Flask(__name__)
 
 app.config['SECRET_KEY']         = '\x83\xe1\xba%j\x0b\xe5Q\xdeiG\xde\\\xb1\x94\xe4\x0e\x1dk\x99\x1a\xda\xe8x'
-app.config['MYSQL_HOST']         = 'db'
+app.config['MYSQL_HOST']         = os.environ["DB_HOST"]
 app.config['MYSQL_USER']         = 'facefive'
 app.config['MYSQL_PASSWORD']     = 'facefivepass'
 app.config['MYSQL_DB']           = 'facefivedb'

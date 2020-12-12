@@ -2,6 +2,8 @@ version: "3.2"
 services:
   app:
     build: ./facefive
+    environment:
+      DB_HOST: 'db'
     depends_on:
       - db
     ports:
@@ -17,4 +19,4 @@ services:
     volumes:
       - ./db:/docker-entrypoint-initdb.d/
     restart: always
-  
+

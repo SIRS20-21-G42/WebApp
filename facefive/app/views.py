@@ -223,13 +223,13 @@ def update_profile():
     try:
         if not new_password:
             new_password = current_password
-            update_hash = model.digest_text_to_b64(json.dumps(update))
+            update_hash = model.digest_text_to_b64(json.dumps(update, separators=(',', ':')))
             iv = None
         else:
             update['password'] = new_password
 
             # hash needs to be calculated before password encryption
-            update_hash = model.digest_text_to_b64(json.dumps(update))
+            update_hash = model.digest_text_to_b64(json.dumps(update, separators=(',', ':')))
 
             b_64_pass = model.cipher_aes_to_b64(new_password.encode(), iv)
             update['password'] = b_64_pass
