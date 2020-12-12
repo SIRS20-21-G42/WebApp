@@ -17,9 +17,9 @@ if [ ! -f "CA.cert" ]; then
 		rm CA.cert
         exit 1
     fi
-    echo "Trusting CA certificate"
-    cat CA.cert >> /usr/local/lib/python3.7/site-packages/certifi/cacert.pem
 fi
+echo "Trusting CA certificate"
+cat CA.cert >> /usr/local/lib/python3.7/site-packages/certifi/cacert.pem
 
 gen=false
 # Check for private key
